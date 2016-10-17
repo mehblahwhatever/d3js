@@ -110,28 +110,92 @@ Now consider how you might create a bar chart *without* JavaScript. After all, t
 </div>
 ```
 
-That looks like:
+This chart has one div for a container, and one child div for each bar. The child divs have a blue background color and a white foreground color, giving the appearance of bars wtih right-aligned value labels. You could simplify this implementation even further by removing the containing chart div. But more commonly your page will contain content in addition to the chart, so having a chart container lets you position and style the chart without affecting the rest of the page.
 
-<!DOCTYPE html>
-<style>
+## Coding a Chart, Automatically
 
-	.chart div {
-		font: 10px sans-serif;
-		background-color: steelblue;
-		text-align: right;
-		padding: 3px;
-		margin: 1px;	
-		color: white;
-	}
+Of course hard-coding is impractical for most datasets, and the point of this tutorial is to teach you how to create charts from data automatically. So let's create the identical structure using D3, starting with an empty page that contains only a div of class "chart". The following script selects the chart container and then appends a child div for each bar with the desired width:
 
-</style>
+```javascript
+d3.select(".chart")
+	.selectAll("div")
+		.data(data)
+		.enter()
+	.append("div")
+		.style("width", function (d) {return d * 10 + "px";})
+		.text(function (d) {return d;});
+```
 
-<div class="chart">
-	<div style="width: 40px;">4</div>
-	<div style="width: 80px;">8</div>
-	<div style="width: 150px;">15</div>
-	<div style="width: 160px;">16</div>
-	<div style="width: 230px;">23</div>
-	<div style="width: 420px;">42</div>
-</div>
+Although partly familiar, this code introduces an important new concept -- the *data join*. Let's break it down, rewriting the concise code in long form, to see how it works.
 
+First, we select the chart container using a class selector.
+
+```javascript
+var chart = d3.select(".chart");
+```
+
+Next we initialize the data join by defining the selection to which we will join data.
+
+```javascript
+var bar = chart.selectAll("div");
+```
+
+The data join is a general pattern that can be used to create, update or destroy elements whenever data changes. It might feel odd, but the benefit of this approach is taht you only have to learn and use a single pattern to manipulate the page. So whether you're building a static chart or a dynamic one with fluid transitions and object constancy, your code remains roughly the same. Think of the initial selection as declaring the elements you *want* to exist.
+
+Next we join the data (defined previously) to the selection using selection.data.
+
+```javascript
+var barUpdate = bar.data(data);
+```
+
+*The data operator returns the update selection. The enter and exit selections hang off the update selection, so you can ignore them if you don't need to add or remove elements.*
+
+Since we know the selection is empty, the returned *update* and *exit* selections are also empty, and we need only handle the *enter* selection which represents new data for which there was no existing element. We instantiate these missing elements by appending to the enter selection.
+
+```javascript
+var barEnter = barUpdate.enter().append("div");
+```
+
+Now we set the width of each new bar as a multiple of the associated data value, d.
+
+```javascript
+barEnter.style("width", function(d) {return d * 10 + "px"; });
+```
+
+Because these elements were created with the data join, each bar is already bound to data. We set the dimensions of each bar based on its data by passing a funciton to compute the width style property.
+
+Lastly, we use a function to set the text content of each bar, and produce a label.
+
+```javascript
+barEnter.text(function(d) {return d;});
+```
+
+*When formatting numbers for text labels, you may want to use d3.format for rounding and grouping to improve readablity.*
+
+D3's selection operators such as attr, style, and property, allow you to specify the value either as a constant (the same for all selected elements) or a function (computed separately for each element). If the value of a particular attribute should be based ont eh element's associated data, then use a function to compute it; otherwise, if it's the same for all the elements, then a string or number suffices.
+
+## Scaling to Fit
+
+One weakness of the code above is the magic number 10, which is used to scale the data value to the appropriate pixel width. This number depends on the domain fo the data (the minimum and maximum value, 0 and 42, respectively), and the desired width of the chart (420), but of course these dependencies are only implicit in the value 10.
+
+We can make these dependencies explicit and eliminate the amgic number by using a linear scale. D3's scales specify a mapping from data space (*domain*) to display space (*range*):
+
+```javascript
+var x = d3.scale.linear()
+		.domain([0, d3.max(data)])
+		.range([0, 420])
+```
+
+* D3's scales can also be used to interpolate many other types of display-space values, such as paths, color spaces and geometric transforms.*
+
+Although x here looks like an object, it is also a function that returns the scaled display value in the range for a given data value in the domain. For example, an input value of 4 returns 40, and an input value of 16 returns 160. To use the new scale, simply replace the hard-coded multiplication by calling the scale function:
+
+```javascript
+d3.select(".chart")
+	.selectAll("div")
+		.data(data)
+		.enter()
+	.append("div")
+		.style("width", function (d) {return x(d) + "px";})
+		.text(function (d) { return d;});
+```
